@@ -1,17 +1,19 @@
+/* App.jsx */
 import React, { useState } from "react";
 import { ethers } from "ethers";
 
-// ✅ ERC-20 ABI (partial)
+/* ---------------  ABI & CONSTANTS  --------------- */
 const erc20ABI = [
   "function balanceOf(address) view returns (uint256)",
   "function transfer(address,uint256) returns (bool)",
   "function decimals() view returns (uint8)",
 ];
-
-// ✅ Corrected Token Address (BSC Testnet)
 const USDT_ADDRESS = "0x787a697324dba4ab965c58cd33c13ff5eea6295f";
+const RPC_URL = "https://data-seed-prebsc-1-s1.binance.org:8545";
 
-function App() {
+/* ---------------  MAIN COMPONENT  --------------- */
+export default function App() {
+  /* ----------  Hooks  ---------- */
   const [username, setUsername] = useState("");
   const [walletData, setWalletData] = useState([]);
   const [bnbBalances, setBnbBalances] = useState({});
@@ -21,8 +23,9 @@ function App() {
   const [successMessage, setSuccessMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
 
-  const provider = new ethers.JsonRpcProvider("https://data-seed-prebsc-1-s1.binance.org:8545");
+  const provider = new ethers.JsonRpcProvider(RPC_URL);
 
+  /* ----------  Handlers  ---------- */
   const generateAndSaveWallet = async () => {
     if (!username) return alert("Enter a username first!");
     const wallet = ethers.Wallet.createRandom();
@@ -32,13 +35,11 @@ function App() {
       privateKey: wallet.privateKey,
       mnemonic: wallet.mnemonic.phrase,
     };
-
     const res = await fetch("http://localhost:5000/api/wallet", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newWallet),
     });
-
     const result = await res.json();
     alert(result.message);
   };
@@ -53,15 +54,9 @@ function App() {
   const getBNBBalance = async (address) => {
     try {
       const balance = await provider.getBalance(address);
-      setBnbBalances((prev) => ({
-        ...prev,
-        [address]: ethers.formatEther(balance),
-      }));
+      setBnbBalances((p) => ({ ...p, [address]: ethers.formatEther(balance) }));
     } catch {
-      setBnbBalances((prev) => ({
-        ...prev,
-        [address]: "Error",
-      }));
+      setBnbBalances((p) => ({ ...p, [address]: "Error" }));
     }
   };
 
@@ -73,212 +68,263 @@ function App() {
         contract.decimals(),
       ]);
       const formatted = ethers.formatUnits(balance, decimals);
-      setState((prev) => ({
-        ...prev,
-        [address]: formatted,
-      }));
-    } catch (err) {
-      console.error(`Error fetching token balance: ${err.message}`);
-      setState((prev) => ({
-        ...prev,
-        [address]: "Error",
-      }));
+      setState((p) => ({ ...p, [address]: formatted }));
+    } catch {
+      setState((p) => ({ ...p, [address]: "Error" }));
     }
   };
 
-  // ✅ UPDATED FUNCTION
-  const sendBNB = async (privateKey) => {
-    if (!receiverAddress || !amount) return alert("Enter address and amount.");
-    
+  const sendBNB = async (pk) => {
+    if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
     try {
-      const wallet = new ethers.Wallet(privateKey, provider);
+      const wallet = new ethers.Wallet(pk, provider);
       const tx = await wallet.sendTransaction({
         to: receiverAddress,
         value: ethers.parseEther(amount),
       });
-      await tx.wait(); 
+      await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000); 
-
-      // ✅ NEW: Refresh the BNB balance after sending
       getBNBBalance(wallet.address);
-
-    } catch (err) {
-      alert("BNB Tx Failed: " + err.message);
+    } catch (e) {
+      alert("BNB Tx failed: " + e.message);
     } finally {
       setIsSending(false);
     }
   };
 
-  // ✅ UPDATED FUNCTION
-  const sendToken = async (privateKey, tokenAddress) => {
-    if (!receiverAddress || !amount) return alert("Enter address and amount.");
-
+  const sendToken = async (pk, tokenAddress) => {
+    if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
     try {
-      const wallet = new ethers.Wallet(privateKey, provider);
+      const wallet = new ethers.Wallet(pk, provider);
       const contract = new ethers.Contract(tokenAddress, erc20ABI, wallet);
       const decimals = await contract.decimals();
-      const tx = await contract.transfer(receiverAddress, ethers.parseUnits(amount, decimals));
-      await tx.wait(); 
+      const tx = await contract.transfer(
+        receiverAddress,
+        ethers.parseUnits(amount, decimals)
+      );
+      await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000);
-
-      // ✅ NEW: Refresh the token balance after sending
       getTokenBalance(wallet.address, tokenAddress, setUsdtBalances);
-
-    } catch (err) {
-      console.error(err);
-      alert("Token Tx Failed. Check the console (F12) for details.");
+    } catch (e) {
+      alert("Token Tx failed: " + e.message);
     } finally {
       setIsSending(false);
     }
   };
 
+  /* ----------  Render  ---------- */
   return (
-    <div style={{ fontFamily: "Arial", padding: "30px", backgroundColor: "#f4f6f8", minHeight: "100vh" }}>
-      
+    <div className="app">
       {successMessage && (
-        <div style={{
-          position: 'fixed',
-          top: '20px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          backgroundColor: '#28a745',
-          color: 'white',
-          padding: '16px 30px',
-          borderRadius: '10px',
-          boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
-          zIndex: 1000,
-          textAlign: 'center',
-          fontSize: '16px'
-        }}>
-          <p style={{ margin: 0, padding: 0, fontWeight: 'bold' }}>✅ Transaction Confirmed!</p>
-          <p style={{ margin: '8px 0 0 0', padding: 0, fontSize: '14px', opacity: 0.9 }}>
-            Hash: <a href={`https://testnet.bscscan.com/tx/${successMessage}`} target="_blank" rel="noopener noreferrer" style={{ color: 'white', textDecoration: 'underline' }}>
-              {`${successMessage.substring(0, 10)}...${successMessage.substring(successMessage.length - 10)}`}
-            </a>
-          </p>
+        <div className="toast">
+          ✅ Transaction confirmed!{" "}
+          <a
+            href={`https://testnet.bscscan.com/tx/${successMessage}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {successMessage.slice(0, 10)}…{successMessage.slice(-6)}
+          </a>
         </div>
       )}
-      
-      <h1 style={{ textAlign: "center", color: "#333", marginBottom: "30px" }}>
-        🌐 Web3 Wallet (BNB & USDT - BSC Testnet)
-      </h1>
-      
-      <div style={{ textAlign: "center", marginBottom: "20px" }}>
+
+      <h1 className="title">🌐 Web3 Wallet (BNB & USDT – BSC Testnet)</h1>
+
+      <div className="controls">
         <input
-          type="text"
           placeholder="Enter username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          style={{
-            padding: "10px",
-            width: "250px",
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            marginRight: "10px",
-          }}
+          className="input"
         />
-        <button
-          onClick={generateAndSaveWallet}
-          style={{ padding: "10px 15px", borderRadius: "8px", backgroundColor: "#28a745", color: "#fff", border: "none" }}
-        >
+        <button onClick={generateAndSaveWallet} className="btn primary">
           Generate Wallet
         </button>
-        <button
-          onClick={fetchWallets}
-          style={{
-            padding: "10px 15px",
-            marginLeft: "10px",
-            borderRadius: "8px",
-            backgroundColor: "#007bff",
-            color: "#fff",
-            border: "none",
-          }}
-        >
+        <button onClick={fetchWallets} className="btn secondary">
           Fetch My Wallets
         </button>
       </div>
 
       {walletData.length > 0 && (
-        <div style={{ marginTop: "30px" }}>
-          <h3 style={{ textAlign: "center", color: "#444" }}>Wallets for: {username}</h3>
-          {walletData.map((wallet, index) => (
-            <div
-              key={index}
-              style={{
-                margin: "20px auto",
-                width: "90%",
-                maxWidth: "600px",
-                backgroundColor: "#fff",
-                borderRadius: "12px",
-                boxShadow: "0 0 10px rgba(0,0,0,0.1)",
-                padding: "20px",
-              }}
-            >
-              <p><strong>Address:</strong> {wallet.address}</p>
-              <p><strong>Private Key:</strong> {wallet.privateKey}</p>
+        <div className="wallet-grid">
+          <h3>Wallets for: {username}</h3>
+          {walletData.map((w, i) => (
+            <div key={i} className="wallet-card">
+              <p>
+                <span>Address:</span> {w.address}
+              </p>
+              <p>
+                <span>Private Key:</span> {w.privateKey}
+              </p>
 
-              <div style={{ marginBottom: "10px" }}>
-                <button onClick={() => getBNBBalance(wallet.address)}>Show BNB Balance</button>
-                {bnbBalances[wallet.address] && (
-                  <p><strong>BNB:</strong> {bnbBalances[wallet.address]} BNB</p>
-                )}
+              <div className="balance-row">
+                <button
+                  onClick={() => getBNBBalance(w.address)}
+                  className="btn ghost"
+                >
+                  BNB Balance
+                </button>
+                <span>{bnbBalances[w.address] ?? "—"} BNB</span>
               </div>
 
-              <div style={{ marginBottom: "10px" }}>
-                <button onClick={() => getTokenBalance(wallet.address, USDT_ADDRESS, setUsdtBalances)}>
-                  Show USDT Balance
+              <div className="balance-row">
+                <button
+                  onClick={() =>
+                    getTokenBalance(w.address, USDT_ADDRESS, setUsdtBalances)
+                  }
+                  className="btn ghost"
+                >
+                  USDT Balance
                 </button>
-                {usdtBalances[wallet.address] && (
-                  <p><strong>USDT:</strong> {usdtBalances[wallet.address]}</p>
-                )}
+                <span>{usdtBalances[w.address] ?? "—"} USDT</span>
               </div>
 
               <hr />
+
               <h4>Transfer</h4>
               <input
-                type="text"
                 placeholder="Receiver Address"
                 value={receiverAddress}
                 onChange={(e) => setReceiverAddress(e.target.value)}
-                style={{
-                  padding: "8px",
-                  marginBottom: "5px",
-                  width: "100%",
-                  borderRadius: "6px",
-                  border: "1px solid #ccc",
-                }}
+                className="input full"
               />
-              <br />
               <input
-                type="text"
                 placeholder="Amount"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                style={{
-                  padding: "8px",
-                  marginBottom: "10px",
-                  width: "60%",
-                  borderRadius: "6px",
-                  border: "1px solid #ccc",
-                }}
+                className="input half"
               />
-              <br />
-              <button onClick={() => sendBNB(wallet.privateKey)} disabled={isSending} style={{ marginRight: "5px" }}>
-                {isSending ? "Sending..." : "Send BNB"}
-              </button>
-              <button onClick={() => sendToken(wallet.privateKey, USDT_ADDRESS)} disabled={isSending} style={{ marginRight: "5px" }}>
-                {isSending ? "Sending..." : "Send USDT"}
-              </button>
+              <div className="action-btns">
+                <button
+                  onClick={() => sendBNB(w.privateKey)}
+                  disabled={isSending}
+                  className="btn accent"
+                >
+                  {isSending ? "Sending…" : "Send BNB"}
+                </button>
+                <button
+                  onClick={() => sendToken(w.privateKey, USDT_ADDRESS)}
+                  disabled={isSending}
+                  className="btn accent"
+                >
+                  {isSending ? "Sending…" : "Send USDT"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
+      <style>{css}</style>
     </div>
   );
 }
 
-export default App;
+/* ---------------  CSS  --------------- */
+const css = `
+:root {
+  --bg: #0f0f13;
+  --surface: rgba(255,255,255,.05);
+  --border: rgba(255,255,255,.08);
+  --accent: #00f5a0;
+  --primary: #1e90ff;
+  --text: #f1f1f1;
+  --radius: 16px;
+  --font: "Inter", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); }
+
+.app { min-height: 100vh; padding: 2rem; }
+
+.title { text-align: center; margin-bottom: 2rem; font-size: 2rem; }
+
+/* Toast */
+.toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #000;
+  padding: 14px 24px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  z-index: 1000;
+  animation: slideDown .4s ease;
+}
+@keyframes slideDown {
+  from { transform: translate(-50%, -100%); opacity: 0; }
+  to   { transform: translate(-50%, 0);   opacity: 1; }
+}
+.toast a { color: #000; text-decoration: underline; }
+
+/* Controls */
+.controls {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem 1.2rem;
+  color: var(--text);
+  font-size: 1rem;
+  width: 260px;
+}
+.input.full { width: 100%; margin-bottom: .5rem; }
+.input.half { width: 50%; }
+
+.btn {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: .85rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: .3s;
+}
+.btn.primary   { background: var(--primary); color: #fff; }
+.btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn.accent    { background: var(--accent); color: #000; }
+.btn.ghost     { background: transparent; color: var(--text); border: 1px solid var(--border); }
+.btn:hover     { filter: brightness(1.15); }
+
+/* Wallet Grid */
+.wallet-grid {
+  display: grid;
+  gap: 2rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.wallet-grid h3 { text-align: center; margin-bottom: 1rem; }
+
+.wallet-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  backdrop-filter: blur(12px);
+}
+.wallet-card p { margin-bottom: .5rem; overflow-wrap: break-word; }
+.wallet-card hr { border: none; border-top: 1px solid var(--border); margin: 1.2rem 0; }
+
+.balance-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: .8rem;
+}
+
+.action-btns {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+`;
