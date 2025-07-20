@@ -85,6 +85,7 @@ export default function App() {
       });
       await tx.wait();
       setSuccessMessage(tx.hash);
+      setTimeout(() => setSuccessMessage(""), 5000); // Hide after 5 seconds
       getBNBBalance(wallet.address);
     } catch (e) {
       alert("BNB Tx failed: " + e.message);
@@ -106,6 +107,7 @@ export default function App() {
       );
       await tx.wait();
       setSuccessMessage(tx.hash);
+      setTimeout(() => setSuccessMessage(""), 5000); // Hide after 5 seconds
       getTokenBalance(wallet.address, tokenAddress, setUsdtBalances);
     } catch (e) {
       alert("Token Tx failed: " + e.message);
@@ -133,12 +135,20 @@ export default function App() {
       <h1 className="title">🌐 Web3 Wallet (BNB & USDT – BSC Testnet)</h1>
 
       <div className="controls">
-        <input
-          placeholder="Enter username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          className="input"
-        />
+        {/* ✅ UPDATED: USERNAME INPUT */}
+        <div className="input-wrapper">
+          <input
+            placeholder="Enter username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="input"
+          />
+          {username.length > 0 && (
+            <button onClick={() => setUsername("")} className="btn-clear">
+              ×
+            </button>
+          )}
+        </div>
         <button onClick={generateAndSaveWallet} className="btn primary">
           Generate Wallet
         </button>
@@ -184,18 +194,34 @@ export default function App() {
               <hr />
 
               <h4>Transfer</h4>
-              <input
-                placeholder="Receiver Address"
-                value={receiverAddress}
-                onChange={(e) => setReceiverAddress(e.target.value)}
-                className="input full"
-              />
-              <input
-                placeholder="Amount"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="input half"
-              />
+              {/* ✅ UPDATED: RECEIVER ADDRESS INPUT */}
+              <div className="input-wrapper full">
+                <input
+                  placeholder="Receiver Address"
+                  value={receiverAddress}
+                  onChange={(e) => setReceiverAddress(e.target.value)}
+                  className="input full"
+                />
+                {receiverAddress.length > 0 && (
+                  <button onClick={() => setReceiverAddress("")} className="btn-clear">
+                    ×
+                  </button>
+                )}
+              </div>
+              {/* ✅ UPDATED: AMOUNT INPUT */}
+              <div className="input-wrapper half">
+                <input
+                  placeholder="Amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="input half"
+                />
+                {amount.length > 0 && (
+                  <button onClick={() => setAmount("")} className="btn-clear">
+                    ×
+                  </button>
+                )}
+              </div>
               <div className="action-btns">
                 <button
                   onClick={() => sendBNB(w.privateKey)}
@@ -269,6 +295,15 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   margin-bottom: 2rem;
 }
 
+/* ✅ NEW: Input Wrapper for clear button */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-wrapper.full { width: 100%; margin-bottom: .5rem; }
+.input-wrapper.half { width: 50%; }
+
 .input {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -276,10 +311,12 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   padding: .85rem 1.2rem;
   color: var(--text);
   font-size: 1rem;
-  width: 260px;
+  width: 100%; /* Make input take full width of its wrapper */
+  padding-right: 2.5rem; /* ✅ ADDED: Make space for clear button */
 }
-.input.full { width: 100%; margin-bottom: .5rem; }
-.input.half { width: 50%; }
+/* This removes the now-redundant width settings */
+.input.full, .input.half { width: 100%; } 
+
 
 .btn {
   cursor: pointer;
@@ -290,6 +327,23 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   font-weight: 600;
   transition: .3s;
 }
+
+/* ✅ NEW: Clear Button Style */
+.btn-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  font-weight: 400;
+  cursor: pointer;
+  padding: 0 .5rem;
+  line-height: 1;
+}
+
 .btn.primary   { background: var(--primary); color: #fff; }
 .btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .btn.accent    { background: var(--accent); color: #000; }
