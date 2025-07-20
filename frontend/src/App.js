@@ -15,6 +15,8 @@ const RPC_URL = "https://data-seed-prebsc-1-s1.binance.org:8545";
 export default function App() {
   /* ----------  Hooks  ---------- */
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false); // ✅ NEW: State for password visibility
   const [walletData, setWalletData] = useState([]);
   const [bnbBalances, setBnbBalances] = useState({});
   const [usdtBalances, setUsdtBalances] = useState({});
@@ -26,11 +28,13 @@ export default function App() {
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
   /* ----------  Handlers  ---------- */
+  // (All your handler functions like generateAndSaveWallet, fetchWallets, etc. remain exactly the same)
   const generateAndSaveWallet = async () => {
-    if (!username) return alert("Enter a username first!");
+    if (!username || !password) return alert("Username and password are required!");
     const wallet = ethers.Wallet.createRandom();
     const newWallet = {
       username,
+      password,
       address: wallet.address,
       privateKey: wallet.privateKey,
       mnemonic: wallet.mnemonic.phrase,
@@ -45,10 +49,19 @@ export default function App() {
   };
 
   const fetchWallets = async () => {
-    if (!username) return alert("Enter a username first!");
-    const res = await fetch(`http://localhost:5000/api/wallet/${username}`);
+    if (!username || !password) return alert("Username and password are required!");
+    const res = await fetch(`http://localhost:5000/api/wallet/fetch`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
     const data = await res.json();
-    setWalletData(data);
+    if (data.error) {
+      alert(data.error);
+      setWalletData([]);
+    } else {
+      setWalletData(data);
+    }
   };
 
   const getBNBBalance = async (address) => {
@@ -59,7 +72,6 @@ export default function App() {
       setBnbBalances((p) => ({ ...p, [address]: "Error" }));
     }
   };
-
   const getTokenBalance = async (address, tokenAddress, setState) => {
     try {
       const contract = new ethers.Contract(tokenAddress, erc20ABI, provider);
@@ -73,7 +85,6 @@ export default function App() {
       setState((p) => ({ ...p, [address]: "Error" }));
     }
   };
-
   const sendBNB = async (pk) => {
     if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
@@ -85,7 +96,7 @@ export default function App() {
       });
       await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000); // Hide after 5 seconds
+      setTimeout(() => setSuccessMessage(""), 5000);
       getBNBBalance(wallet.address);
     } catch (e) {
       alert("BNB Tx failed: " + e.message);
@@ -93,7 +104,6 @@ export default function App() {
       setIsSending(false);
     }
   };
-
   const sendToken = async (pk, tokenAddress) => {
     if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
@@ -107,7 +117,7 @@ export default function App() {
       );
       await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000); // Hide after 5 seconds
+      setTimeout(() => setSuccessMessage(""), 5000);
       getTokenBalance(wallet.address, tokenAddress, setUsdtBalances);
     } catch (e) {
       alert("Token Tx failed: " + e.message);
@@ -135,9 +145,9 @@ export default function App() {
       <h1 className="title">🌐 Web3 Wallet (BNB & USDT – BSC Testnet)</h1>
 
       <div className="controls">
-        {/* ✅ UPDATED: USERNAME INPUT */}
         <div className="input-wrapper">
           <input
+            type="text"
             placeholder="Enter username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -149,6 +159,29 @@ export default function App() {
             </button>
           )}
         </div>
+        
+        {/* ✅ UPDATED: Password input with Show/Hide button */}
+        <div className="input-wrapper">
+          <input
+            type={isPasswordVisible ? "text" : "password"} // Dynamic type
+            placeholder="Enter password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="input"
+          />
+          <button 
+            onClick={() => setIsPasswordVisible(!isPasswordVisible)} 
+            className="btn-toggle-visibility"
+          >
+            {isPasswordVisible ? "Hide" : "Show"}
+          </button>
+          {password.length > 0 && (
+            <button onClick={() => setPassword("")} className="btn-clear">
+              ×
+            </button>
+          )}
+        </div>
+
         <button onClick={generateAndSaveWallet} className="btn primary">
           Generate Wallet
         </button>
@@ -158,85 +191,34 @@ export default function App() {
       </div>
 
       {walletData.length > 0 && (
+        // ... The rest of your JSX is the same ...
         <div className="wallet-grid">
           <h3>Wallets for: {username}</h3>
           {walletData.map((w, i) => (
             <div key={i} className="wallet-card">
-              <p>
-                <span>Address:</span> {w.address}
-              </p>
-              <p>
-                <span>Private Key:</span> {w.privateKey}
-              </p>
-
+              <p><span>Address:</span> {w.address}</p>
+              <p><span>Private Key:</span> {w.privateKey}</p>
               <div className="balance-row">
-                <button
-                  onClick={() => getBNBBalance(w.address)}
-                  className="btn ghost"
-                >
-                  BNB Balance
-                </button>
+                <button onClick={() => getBNBBalance(w.address)} className="btn ghost">BNB Balance</button>
                 <span>{bnbBalances[w.address] ?? "—"} BNB</span>
               </div>
-
               <div className="balance-row">
-                <button
-                  onClick={() =>
-                    getTokenBalance(w.address, USDT_ADDRESS, setUsdtBalances)
-                  }
-                  className="btn ghost"
-                >
-                  USDT Balance
-                </button>
+                <button onClick={() => getTokenBalance(w.address, USDT_ADDRESS, setUsdtBalances)} className="btn ghost">USDT Balance</button>
                 <span>{usdtBalances[w.address] ?? "—"} USDT</span>
               </div>
-
               <hr />
-
               <h4>Transfer</h4>
-              {/* ✅ UPDATED: RECEIVER ADDRESS INPUT */}
               <div className="input-wrapper full">
-                <input
-                  placeholder="Receiver Address"
-                  value={receiverAddress}
-                  onChange={(e) => setReceiverAddress(e.target.value)}
-                  className="input full"
-                />
-                {receiverAddress.length > 0 && (
-                  <button onClick={() => setReceiverAddress("")} className="btn-clear">
-                    ×
-                  </button>
-                )}
+                <input placeholder="Receiver Address" value={receiverAddress} onChange={(e) => setReceiverAddress(e.target.value)} className="input full"/>
+                {receiverAddress.length > 0 && (<button onClick={() => setReceiverAddress("")} className="btn-clear">×</button>)}
               </div>
-              {/* ✅ UPDATED: AMOUNT INPUT */}
               <div className="input-wrapper half">
-                <input
-                  placeholder="Amount"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="input half"
-                />
-                {amount.length > 0 && (
-                  <button onClick={() => setAmount("")} className="btn-clear">
-                    ×
-                  </button>
-                )}
+                <input placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="input half"/>
+                {amount.length > 0 && (<button onClick={() => setAmount("")} className="btn-clear">×</button>)}
               </div>
               <div className="action-btns">
-                <button
-                  onClick={() => sendBNB(w.privateKey)}
-                  disabled={isSending}
-                  className="btn accent"
-                >
-                  {isSending ? "Sending…" : "Send BNB"}
-                </button>
-                <button
-                  onClick={() => sendToken(w.privateKey, USDT_ADDRESS)}
-                  disabled={isSending}
-                  className="btn accent"
-                >
-                  {isSending ? "Sending…" : "Send USDT"}
-                </button>
+                <button onClick={() => sendBNB(w.privateKey)} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send BNB"}</button>
+                <button onClick={() => sendToken(w.privateKey, USDT_ADDRESS)} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDT"}</button>
               </div>
             </div>
           ))}
@@ -263,7 +245,6 @@ const css = `
 body { background: var(--bg); color: var(--text); font-family: var(--font); }
 
 .app { min-height: 100vh; padding: 2rem; }
-
 .title { text-align: center; margin-bottom: 2rem; font-size: 2rem; }
 
 /* Toast */
@@ -295,7 +276,6 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   margin-bottom: 2rem;
 }
 
-/* ✅ NEW: Input Wrapper for clear button */
 .input-wrapper {
   position: relative;
   display: flex;
@@ -311,12 +291,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   padding: .85rem 1.2rem;
   color: var(--text);
   font-size: 1rem;
-  width: 100%; /* Make input take full width of its wrapper */
-  padding-right: 2.5rem; /* ✅ ADDED: Make space for clear button */
+  width: 100%;
+  padding-right: 6rem; /* ✅ UPDATED: Increased padding to make room for both buttons */
 }
-/* This removes the now-redundant width settings */
 .input.full, .input.half { width: 100%; } 
-
 
 .btn {
   cursor: pointer;
@@ -328,7 +306,6 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   transition: .3s;
 }
 
-/* ✅ NEW: Clear Button Style */
 .btn-clear {
   position: absolute;
   right: 10px;
@@ -342,6 +319,21 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   cursor: pointer;
   padding: 0 .5rem;
   line-height: 1;
+}
+
+/* ✅ NEW: Style for the Show/Hide button */
+.btn-toggle-visibility {
+  position: absolute;
+  right: 45px; /* Position it to the left of the clear button */
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0 .5rem;
 }
 
 .btn.primary   { background: var(--primary); color: #fff; }
