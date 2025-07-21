@@ -9,26 +9,33 @@ const erc20ABI = [
   "function decimals() view returns (uint8)",
 ];
 const USDT_ADDRESS = "0x787a697324dba4ab965c58cd33c13ff5eea6295f";
+// Using your provided address for USDC
+const USDC_ADDRESS = "0x342e3aA1248AB77E319e3331C6fD3f1F2d4B36B1"; 
 const RPC_URL = "https://data-seed-prebsc-1-s1.binance.org:8545";
 
 /* ---------------  MAIN COMPONENT  --------------- */
 export default function App() {
   /* ----------  Hooks  ---------- */
+  const [txHash, setTxHash] = useState("");
+  const [adminWalletAddress, setAdminWalletAddress] = useState("");
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false); // ✅ NEW: State for password visibility
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [walletData, setWalletData] = useState([]);
   const [bnbBalances, setBnbBalances] = useState({});
   const [usdtBalances, setUsdtBalances] = useState({});
+  const [usdcBalances, setUsdcBalances] = useState({});
   const [receiverAddress, setReceiverAddress] = useState("");
   const [amount, setAmount] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
   /* ----------  Handlers  ---------- */
-  // (All your handler functions like generateAndSaveWallet, fetchWallets, etc. remain exactly the same)
   const generateAndSaveWallet = async () => {
     if (!username || !password) return alert("Username and password are required!");
     const wallet = ethers.Wallet.createRandom();
@@ -72,6 +79,7 @@ export default function App() {
       setBnbBalances((p) => ({ ...p, [address]: "Error" }));
     }
   };
+
   const getTokenBalance = async (address, tokenAddress, setState) => {
     try {
       const contract = new ethers.Contract(tokenAddress, erc20ABI, provider);
@@ -85,6 +93,7 @@ export default function App() {
       setState((p) => ({ ...p, [address]: "Error" }));
     }
   };
+
   const sendBNB = async (pk) => {
     if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
@@ -96,7 +105,6 @@ export default function App() {
       });
       await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000);
       getBNBBalance(wallet.address);
     } catch (e) {
       alert("BNB Tx failed: " + e.message);
@@ -104,7 +112,9 @@ export default function App() {
       setIsSending(false);
     }
   };
-  const sendToken = async (pk, tokenAddress) => {
+
+  // ✅ CORRECTED: This function now accepts a callback to refresh the correct balance
+  const sendToken = async (pk, tokenAddress, onCompleteRefresh) => {
     if (!receiverAddress || !amount) return alert("Enter address and amount");
     setIsSending(true);
     try {
@@ -117,12 +127,53 @@ export default function App() {
       );
       await tx.wait();
       setSuccessMessage(tx.hash);
-      setTimeout(() => setSuccessMessage(""), 5000);
-      getTokenBalance(wallet.address, tokenAddress, setUsdtBalances);
+      // This calls the specific refresh function passed to it
+      onCompleteRefresh(wallet.address, tokenAddress);
     } catch (e) {
       alert("Token Tx failed: " + e.message);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleCopyToClipboard = async (textToCopy) => {
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setIsCopied(true);
+      setTimeout(() => {
+        setIsCopied(false);
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy text: ", err);
+      alert("Failed to copy to clipboard.");
+    }
+  };
+
+  const handleVerification = async () => {
+    if (!txHash || !adminWalletAddress) {
+      return alert("Please enter both a transaction hash and an admin wallet address.");
+    }
+    setIsVerifying(true);
+    setVerificationResult(null);
+    try {
+      const response = await fetch("http://localhost:5000/api/verify-tx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txHash, adminWalletAddress }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "An error occurred from the server.");
+      }
+      setVerificationResult(result);
+    } catch (error) {
+      console.error("Verification failed:", error);
+      setVerificationResult({
+        isValid: false,
+        message: `❌ CLIENT ERROR: ${error.message}`,
+      });
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -131,18 +182,35 @@ export default function App() {
     <div className="app">
       {successMessage && (
         <div className="toast">
-          ✅ Transaction confirmed!{" "}
-          <a
-            href={`https://testnet.bscscan.com/tx/${successMessage}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {successMessage.slice(0, 10)}…{successMessage.slice(-6)}
-          </a>
+          <div className="toast-content">
+            ✅ Transaction confirmed!{" "}
+            <a
+              href={`https://testnet.bscscan.com/tx/${successMessage}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {successMessage.slice(0, 10)}…{successMessage.slice(-6)}
+            </a>
+          </div>
+          <div className="toast-actions">
+            <button
+              onClick={() => handleCopyToClipboard(successMessage)}
+              className="toast-btn"
+              disabled={isCopied}
+            >
+              {isCopied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              onClick={() => setSuccessMessage("")}
+              className="toast-btn"
+            >
+              OK
+            </button>
+          </div>
         </div>
       )}
 
-      <h1 className="title">🌐 Web3 Wallet (BNB & USDT – BSC Testnet)</h1>
+      <h1 className="title">🌐 Web3 Wallet (BNB, USDT & USDC)</h1>
 
       <div className="controls">
         <div className="input-wrapper">
@@ -160,10 +228,9 @@ export default function App() {
           )}
         </div>
         
-        {/* ✅ UPDATED: Password input with Show/Hide button */}
         <div className="input-wrapper">
           <input
-            type={isPasswordVisible ? "text" : "password"} // Dynamic type
+            type={isPasswordVisible ? "text" : "password"}
             placeholder="Enter password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -191,7 +258,6 @@ export default function App() {
       </div>
 
       {walletData.length > 0 && (
-        // ... The rest of your JSX is the same ...
         <div className="wallet-grid">
           <h3>Wallets for: {username}</h3>
           {walletData.map((w, i) => (
@@ -206,7 +272,12 @@ export default function App() {
                 <button onClick={() => getTokenBalance(w.address, USDT_ADDRESS, setUsdtBalances)} className="btn ghost">USDT Balance</button>
                 <span>{usdtBalances[w.address] ?? "—"} USDT</span>
               </div>
+              <div className="balance-row">
+                <button onClick={() => getTokenBalance(w.address, USDC_ADDRESS, setUsdcBalances)} className="btn ghost">USDC Balance</button>
+                <span>{usdcBalances[w.address] ?? "—"} USDC</span>
+              </div>
               <hr />
+              
               <h4>Transfer</h4>
               <div className="input-wrapper full">
                 <input placeholder="Receiver Address" value={receiverAddress} onChange={(e) => setReceiverAddress(e.target.value)} className="input full"/>
@@ -216,9 +287,42 @@ export default function App() {
                 <input placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="input half"/>
                 {amount.length > 0 && (<button onClick={() => setAmount("")} className="btn-clear">×</button>)}
               </div>
+              {/* ✅ CORRECTED: All send buttons are now in this container */}
               <div className="action-btns">
                 <button onClick={() => sendBNB(w.privateKey)} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send BNB"}</button>
-                <button onClick={() => sendToken(w.privateKey, USDT_ADDRESS)} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDT"}</button>
+                <button onClick={() => sendToken(w.privateKey, USDT_ADDRESS, (addr, tokenAddr) => getTokenBalance(addr, tokenAddr, setUsdtBalances))} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDT"}</button>
+                <button onClick={() => sendToken(w.privateKey, USDC_ADDRESS, (addr, tokenAddr) => getTokenBalance(addr, tokenAddr, setUsdcBalances))} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDC"}</button>
+              </div>
+
+              <hr />
+              <div>
+                <h4 style={{ marginBottom: '1rem' }}>Verify Transaction</h4>
+                <div className="input-wrapper full">
+                  <input type="text" placeholder="Enter Transaction Hash (e.g., 0x...)" value={txHash} onChange={(e) => setTxHash(e.target.value)} className="input full"/>
+                  {txHash.length > 0 && (<button onClick={() => setTxHash("")} className="btn-clear">×</button>)}
+                </div>
+                <div className="input-wrapper full">
+                  <input type="text" placeholder="Enter Expected Sender (Admin) Address" value={adminWalletAddress} onChange={(e) => setAdminWalletAddress(e.target.value)} className="input full"/>
+                  {adminWalletAddress.length > 0 && (<button onClick={() => setAdminWalletAddress("")} className="btn-clear">×</button>)}
+                </div>
+                {/* ✅ CORRECTED: The extra "Send USDC" button is removed from here */}
+                <button onClick={handleVerification} className="btn primary" disabled={isVerifying}>
+                  {isVerifying ? "Verifying…" : "Verify Transaction"}
+                </button>
+
+                {verificationResult && (
+                  <div className={`verification-result ${verificationResult.isValid ? 'valid' : 'invalid'}`}>
+                    <p>{verificationResult.message}</p>
+                    {verificationResult.details && (
+                      <div className="tx-details">
+                        <p><strong>Actual Sender:</strong> {verificationResult.details.from}</p>
+                        <p><strong>Receiver:</strong> {verificationResult.details.to}</p>
+                     <p><strong>Amount:</strong> {verificationResult.details.amount} 
+                     {verificationResult.details.tokenSymbol}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -231,6 +335,7 @@ export default function App() {
 
 /* ---------------  CSS  --------------- */
 const css = `
+/* All of your existing CSS code is correct and does not need to be changed. */
 :root {
   --bg: #0f0f13;
   --surface: rgba(255,255,255,.05);
@@ -246,8 +351,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
 
 .app { min-height: 100vh; padding: 2rem; }
 .title { text-align: center; margin-bottom: 2rem; font-size: 2rem; }
+.sub-title { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; color: #ccc;}
 
-/* Toast */
+/* Toast CSS */
 .toast {
   position: fixed;
   top: 20px;
@@ -257,15 +363,57 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   color: #000;
   padding: 14px 24px;
   border-radius: var(--radius);
-  font-weight: 600;
   z-index: 1000;
   animation: slideDown .4s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 450px;
+  gap: 1.5rem;
 }
+
 @keyframes slideDown {
   from { transform: translate(-50%, -100%); opacity: 0; }
   to   { transform: translate(-50%, 0);   opacity: 1; }
 }
-.toast a { color: #000; text-decoration: underline; }
+
+.toast a { 
+  color: #000; 
+  text-decoration: underline; 
+  font-weight: 700;
+}
+
+.toast-content {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.toast-btn {
+  background: rgba(0,0,0,0.1);
+  border: 1px solid rgba(0,0,0,0.2);
+  color: #000;
+  padding: 6px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all .2s;
+}
+
+.toast-btn:hover {
+  background: rgba(0,0,0,0.2);
+}
+
+.toast-btn:disabled {
+  background: rgba(0,0,0,0.15);
+  cursor: default;
+  color: rgba(0,0,0,0.7);
+}
 
 /* Controls */
 .controls {
@@ -292,7 +440,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   color: var(--text);
   font-size: 1rem;
   width: 100%;
-  padding-right: 6rem; /* ✅ UPDATED: Increased padding to make room for both buttons */
+  padding-right: 6rem;
 }
 .input.full, .input.half { width: 100%; } 
 
@@ -321,10 +469,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   line-height: 1;
 }
 
-/* ✅ NEW: Style for the Show/Hide button */
 .btn-toggle-visibility {
   position: absolute;
-  right: 45px; /* Position it to the left of the clear button */
+  right: 45px;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
@@ -341,6 +488,36 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
 .btn.accent    { background: var(--accent); color: #000; }
 .btn.ghost     { background: transparent; color: var(--text); border: 1px solid var(--border); }
 .btn:hover     { filter: brightness(1.15); }
+
+/* Verification UI */
+.verification-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: calc(var(--radius) / 2);
+  font-weight: 600;
+  border: 1px solid transparent;
+  word-wrap: break-word;
+}
+
+.verification-result.valid {
+  background: rgba(0, 245, 160, 0.1);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.verification-result.invalid {
+  background: rgba(255, 80, 80, 0.1);
+  color: #ff5050;
+  border-color: #ff5050;
+}
+
+.tx-details {
+  margin-top: 1rem;
+  font-weight: 400;
+  color: var(--text);
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
 
 /* Wallet Grid */
 .wallet-grid {
