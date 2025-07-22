@@ -32,6 +32,7 @@ export default function App() {
   const [successMessage, setSuccessMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [qrVisibleAddress, setQrVisibleAddress] = useState(null);
 
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
@@ -257,12 +258,35 @@ export default function App() {
         </button>
       </div>
 
-      {walletData.length > 0 && (
+     {walletData.length > 0 && (
         <div className="wallet-grid">
           <h3>Wallets for: {username}</h3>
           {walletData.map((w, i) => (
             <div key={i} className="wallet-card">
-              <p><span>Address:</span> {w.address}</p>
+              <div className="address-row">
+                <p><span>Address:</span> {w.address}</p>
+                <button 
+                  onClick={() => setQrVisibleAddress(qrVisibleAddress === w.address ? null : w.address)} 
+                  className="btn ghost small"
+                >
+                  {qrVisibleAddress === w.address ? "Hide QR" : "Show QR"}
+                </button>
+              </div>
+
+              {/* ✅ UPDATED SECTION: Simplified QR code display */}
+              {qrVisibleAddress === w.address && (
+                <div className="qr-code-display">
+                  <img
+                    className="qr-code-image"
+                    // Simplified URL - no need for high error correction anymore
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${w.address}&qzone=1`}
+                    alt="Wallet Address QR Code"
+                  />
+                  {/* ✅ REMOVED: The logo <img> tag is now gone */}
+                  <p className="qr-address-label">Scan to send funds to this address</p>
+                </div>
+              )}
+
               <p><span>Private Key:</span> {w.privateKey}</p>
               <div className="balance-row">
                 <button onClick={() => getBNBBalance(w.address)} className="btn ghost">BNB Balance</button>
@@ -335,7 +359,6 @@ export default function App() {
 
 /* ---------------  CSS  --------------- */
 const css = `
-/* All of your existing CSS code is correct and does not need to be changed. */
 :root {
   --bg: #0f0f13;
   --surface: rgba(255,255,255,.05);
@@ -351,7 +374,54 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
 
 .app { min-height: 100vh; padding: 2rem; }
 .title { text-align: center; margin-bottom: 2rem; font-size: 2rem; }
-.sub-title { text-align: center; margin-bottom: 1.5rem; font-size: 1.5rem; color: #ccc;}
+
+/* --- Simplified QR Code Styles --- */
+.address-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.btn.small {
+  padding: .4rem .8rem;
+  font-size: 0.8rem;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.qr-code-display {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  animation: fadeIn .5s ease;
+}
+
+.qr-code-image {
+  background: white;
+  border: 1px solid var(--border);
+  padding: 10px; /* Gives a nice white margin around the code */
+  border-radius: var(--radius);
+  width: 220px;
+  height: 220px;
+}
+
+/* ✅ REMOVED: .qr-code-logo style is gone. */
+
+.qr-address-label {
+  font-size: 0.9rem;
+  color: #ccc;
+  text-align: center;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 /* Toast CSS */
 .toast {
