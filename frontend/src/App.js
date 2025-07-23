@@ -33,7 +33,7 @@ export default function App() {
   const [isSending, setIsSending] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
   const [qrVisibleAddress, setQrVisibleAddress] = useState(null);
-
+  const [selectedToken, setSelectedToken] = useState("BNB");
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
   /* ----------  Handlers  ---------- */
@@ -134,6 +134,27 @@ export default function App() {
       alert("Token Tx failed: " + e.message);
     } finally {
       setIsSending(false);
+    }
+  };
+  
+  // ✅ 2. CREATE A NEW CENTRAL HANDLER FOR THE SEND BUTTON
+  const handleSend = (privateKey) => {
+    switch (selectedToken) {
+      case "BNB":
+        sendBNB(privateKey);
+        break;
+      case "USDT":
+        sendToken(privateKey, USDT_ADDRESS, (addr, tokenAddr) =>
+          getTokenBalance(addr, tokenAddr, setUsdtBalances)
+        );
+        break;
+      case "USDC":
+        sendToken(privateKey, USDC_ADDRESS, (addr, tokenAddr) =>
+          getTokenBalance(addr, tokenAddr, setUsdcBalances)
+        );
+        break;
+      default:
+        alert("Invalid token selected.");
     }
   };
 
@@ -313,9 +334,22 @@ export default function App() {
               </div>
               {/* ✅ CORRECTED: All send buttons are now in this container */}
               <div className="action-btns">
-                <button onClick={() => sendBNB(w.privateKey)} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send BNB"}</button>
-                <button onClick={() => sendToken(w.privateKey, USDT_ADDRESS, (addr, tokenAddr) => getTokenBalance(addr, tokenAddr, setUsdtBalances))} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDT"}</button>
-                <button onClick={() => sendToken(w.privateKey, USDC_ADDRESS, (addr, tokenAddr) => getTokenBalance(addr, tokenAddr, setUsdcBalances))} disabled={isSending} className="btn accent">{isSending ? "Sending…" : "Send USDC"}</button>
+                <select
+                  value={selectedToken}
+                  onChange={(e) => setSelectedToken(e.target.value)}
+                  className="select-token"
+                >
+                  <option value="BNB">BNB</option>
+                  <option value="USDT">USDT</option>
+                  <option value="USDC">USDC</option>
+                </select>
+                <button
+                  onClick={() => handleSend(w.privateKey)}
+                  disabled={isSending}
+                  className="btn accent send-btn"
+                >
+                  {isSending ? "Sending…" : `Send ${selectedToken}`}
+                </button>
               </div>
 
               <hr />
@@ -371,6 +405,40 @@ const css = `
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: var(--bg); color: var(--text); font-family: var(--font); }
+
+.select-token {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem 3rem .85rem 1.2rem;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23f1f1f1%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.4-5.4-13z%22/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1.2rem top 50%;
+  background-size: .65rem auto;
+  flex-shrink: 0;
+}
+
+.select-token:hover {
+  border-color: var(--accent);
+}
+
+.action-btns {
+  display: flex;
+  gap: .75rem;
+  align-items: stretch; /* Makes select and button the same height */
+}
+
+/* Make the send button grow to fill the remaining space */
+.send-btn {
+  flex-grow: 1; 
+}
 
 .app { min-height: 100vh; padding: 2rem; }
 .title { text-align: center; margin-bottom: 2rem; font-size: 2rem; }
@@ -500,7 +568,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); }
   align-items: center;
 }
 .input-wrapper.full { width: 100%; margin-bottom: .5rem; }
-.input-wrapper.half { width: 50%; }
+.input-wrapper.half {
+width: 50%; 
+margin-bottom: 0.75rem;}
 
 .input {
   background: var(--surface);
