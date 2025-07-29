@@ -1,5 +1,5 @@
 /* App.jsx */
-import React, { useState } from "react";
+import React, { useState,useEffect } from "react";
 import { ethers } from "ethers";
 
 /* ---------------  ABI & CONSTANTS  --------------- */
@@ -34,6 +34,8 @@ export default function App() {
   const [isCopied, setIsCopied] = useState(false);
   const [qrVisibleAddress, setQrVisibleAddress] = useState(null);
   const [selectedToken, setSelectedToken] = useState("BNB");
+  const [transactionHistory, setTransactionHistory] = useState([]);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const provider = new ethers.JsonRpcProvider(RPC_URL);
 
   /* ----------  Handlers  ---------- */
@@ -69,6 +71,7 @@ export default function App() {
       setWalletData([]);
     } else {
       setWalletData(data);
+      fetchTransactionHistory();
     }
   };
 
@@ -95,49 +98,100 @@ export default function App() {
     }
   };
 
-  const sendBNB = async (pk) => {
-    if (!receiverAddress || !amount) return alert("Enter address and amount");
-    setIsSending(true);
-    try {
-      const wallet = new ethers.Wallet(pk, provider);
-      const tx = await wallet.sendTransaction({
-        to: receiverAddress,
-        value: ethers.parseEther(amount),
-      });
-      await tx.wait();
-      setSuccessMessage(tx.hash);
-      getBNBBalance(wallet.address);
-    } catch (e) {
-      alert("BNB Tx failed: " + e.message);
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  // ✅ CORRECTED: This function now accepts a callback to refresh the correct balance
-  const sendToken = async (pk, tokenAddress, onCompleteRefresh) => {
-    if (!receiverAddress || !amount) return alert("Enter address and amount");
-    setIsSending(true);
-    try {
-      const wallet = new ethers.Wallet(pk, provider);
-      const contract = new ethers.Contract(tokenAddress, erc20ABI, wallet);
-      const decimals = await contract.decimals();
-      const tx = await contract.transfer(
-        receiverAddress,
-        ethers.parseUnits(amount, decimals)
-      );
-      await tx.wait();
-      setSuccessMessage(tx.hash);
-      // This calls the specific refresh function passed to it
-      onCompleteRefresh(wallet.address, tokenAddress);
-    } catch (e) {
-      alert("Token Tx failed: " + e.message);
-    } finally {
-      setIsSending(false);
-    }
-  };
+// In App.jsx - Replace your old sendBNB function
+const sendBNB = async (pk) => {
+  if (!receiverAddress || !amount) return alert("Enter address and amount");
+  setIsSending(true);
   
-  // ✅ 2. CREATE A NEW CENTRAL HANDLER FOR THE SEND BUTTON
+  const wallet = new ethers.Wallet(pk, provider);
+  let tx; // Define tx here to access it in the catch block
+
+  try {
+    // --- PHASE 1: SUBMIT AND SAVE AS PENDING ---
+    tx = await wallet.sendTransaction({
+      to: receiverAddress,
+      value: ethers.parseEther(amount),
+    });
+
+    setSuccessMessage(`⏳ Transaction submitted! Now waiting for confirmation... Hash: ${tx.hash.slice(0,10)}...`);
+
+    // Save immediately as 'pending'
+    await saveTransactionHistory({
+      txHash: tx.hash,
+      from: wallet.address,
+      to: receiverAddress,
+      amount: amount,
+      tokenSymbol: 'BNB',
+      status: 'pending',
+    });
+       tx.wait()
+      .then(async (receipt) => {
+        // SUCCESS CASE
+        await updateTransactionStatus(receipt.hash, 'success');
+        getBNBBalance(wallet.address);
+        fetchTransactionHistory();
+      })
+      .catch(async (error) => {
+        // FAILURE CASE
+        console.error("BNB transaction failed to confirm:", error);
+        await updateTransactionStatus(tx.hash, 'failed');
+        fetchTransactionHistory();
+      });
+
+      } catch (error) {
+        alert("Transaction could not be submitted: " + error.message);
+     } finally {
+    // ✅ UI is now free
+        setIsSending(false);
+  }
+};
+
+const sendToken = async (pk, tokenAddress, onCompleteRefresh) => {
+  if (!receiverAddress || !amount) return alert("Enter address and amount");
+  setIsSending(true);
+
+  const wallet = new ethers.Wallet(pk, provider);
+
+  try {
+    const contract = new ethers.Contract(tokenAddress, erc20ABI, wallet);
+    const decimals = await contract.decimals();
+    const tokenSymbol = tokenAddress === USDT_ADDRESS ? 'USDT' : 'USDC';
+
+    const tx = await contract.transfer(
+      receiverAddress,
+      ethers.parseUnits(amount, decimals)
+    );
+    await saveTransactionHistory({
+      txHash: tx.hash,
+      from: wallet.address,
+      to: receiverAddress,
+      amount: amount,
+      tokenSymbol: tokenSymbol,
+      status: 'pending',
+    });
+
+    fetchTransactionHistory();
+    setSuccessMessage(`✅ Transaction submitted! It will be processed in the background. Hash: ${tx.hash.slice(0,10)}...`);
+
+    tx.wait()
+      .then(async (receipt) => {
+        console.log("Transaction confirmed:", receipt.hash);
+        await updateTransactionStatus(receipt.hash, 'success');
+        onCompleteRefresh(wallet.address, tokenAddress); // Refresh balance
+        fetchTransactionHistory(); // Refresh list to show 'success'
+      })
+      .catch(async (error) => {
+        console.error("Transaction failed to confirm:", error);
+        await updateTransactionStatus(tx.hash, 'failed');
+        fetchTransactionHistory(); // Refresh list to show 'failed'
+      });
+
+  } catch (error) {
+    alert("Transaction could not be submitted: " + error.message);
+  } finally {
+    setIsSending(false);
+  }
+  };
   const handleSend = (privateKey) => {
     switch (selectedToken) {
       case "BNB":
@@ -157,6 +211,25 @@ export default function App() {
         alert("Invalid token selected.");
     }
   };
+  const saveTransactionHistory = async (txDetails) => {
+  try {
+    const response = await fetch("http://localhost:5000/api/tx-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(txDetails),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error("Failed to save transaction history:", result.message);
+    } else {
+      console.log("Transaction history saved successfully:", result.message);
+    }
+  } catch (error) {
+    console.error("Error sending transaction history to server:", error);
+  }
+};
 
   const handleCopyToClipboard = async (textToCopy) => {
     try {
@@ -198,7 +271,39 @@ export default function App() {
       setIsVerifying(false);
     }
   };
+  const fetchTransactionHistory = async () => {
+    if (!username) return; // Don't fetch if no user is entered
 
+    try {
+      setIsHistoryLoading(true);
+      const res = await fetch(`http://localhost:5000/api/tx-history/${username}`);
+      if (!res.ok) {
+        // If user has no history yet, the server might send a 404, which is fine.
+        setTransactionHistory([]);
+        return;
+      }
+      const data = await res.json();
+      setTransactionHistory(data);
+    } catch (error) {
+      console.error("Failed to fetch transaction history:", error);
+      setTransactionHistory([]); // Clear history on error
+      }
+      finally {
+    setIsHistoryLoading(false); 
+  }
+    };
+    // In App.jsx
+const updateTransactionStatus = async (txHash, status) => {
+  try {
+    await fetch("http://localhost:5000/api/tx-status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ txHash, status }),
+    });
+  } catch (error) {
+    console.error(`Failed to update status for ${txHash}:`, error);
+  }
+};
   /* ----------  Render  ---------- */
   return (
     <div className="app">
@@ -381,7 +486,62 @@ export default function App() {
                     )}
                   </div>
                 )}
+                {/* ✅ START: TRANSACTION HISTORY SECTION */}
+<div className="history-section">
+  <div className="history-header">
+    <h4>Transaction History</h4>
+    <button
+      onClick={fetchTransactionHistory}
+      className="btn ghost small"
+      disabled={isHistoryLoading} // Disable button while loading
+    >
+      {isHistoryLoading ? 'Refreshing...' : 'Refresh History'}
+    </button>
+  </div>
+
+  <div className="history-list">
+    {isHistoryLoading ? (
+      // If loading, show a simple loading message
+      <p className="no-history">Loading history...</p>
+    ) : (
+      // If not loading, show the existing list or "no history" message
+      transactionHistory.filter(tx => tx.from.toLowerCase() === w.address.toLowerCase()).length > 0 ? (
+        transactionHistory
+          .filter(tx => tx.from.toLowerCase() === w.address.toLowerCase())
+
+       .map(tx => (
+  <div key={tx.txHash} className={`history-item status-${tx.status}`}>
+    <div className="history-item-row">
+      <span>
+        {tx.status === 'success' && '✅ '}
+        {tx.status === 'pending' && '⏳ '}
+        {tx.status === 'failed' && '❌ '}
+        Status:
+      </span>
+      <span className={`status-text status-${tx.status}`}>{tx.status}</span>
+    </div>
+
+    <div className="history-item-row">
+      <span>To:</span>
+      <span className="history-address">{tx.to.slice(0, 6)}...{tx.to.slice(-4)}</span>
+    </div>
+    <div className="history-item-row">
+      <span>Amount:</span>
+      <span className="history-amount">{tx.amount} {tx.tokenSymbol}</span>
+    </div>
+    <a /* ... a-tag as before ... */ >
+      View on BscScan
+    </a>
+  </div>
+)) 
+      ) : (
+        <p className="no-history">No transactions sent from this wallet yet.</p>
+      )
+    )}
+  </div>
+</div>
               </div>
+              
             </div>
           ))}
         </div>
@@ -690,4 +850,73 @@ margin-bottom: 0.75rem;}
   gap: .5rem;
   flex-wrap: wrap;
 }
+  /* History Section */
+.history-section {
+  margin-top: 1.5rem;
+}
+  .history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.history-section h4 {
+  margin-bottom: 1rem;
+}
+.history-list {
+  margin-top: 1rem;
+  max-height: 250px; /* Limit height and make it scrollable */
+  overflow-y: auto;
+  padding-right: 10px; /* Space for the scrollbar */
+}
+.history-item {
+  background: rgba(0,0,0,0.2);
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: .75rem;
+  border: 1px solid var(--border);
+}
+.history-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+.history-item-row span:first-child {
+  color: #aaa;
+}
+.history-amount {
+  font-weight: 700;
+}
+.history-link {
+  display: inline-block;
+  margin-top: .5rem;
+  font-size: .9rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.history-link:hover {
+  text-decoration: underline;
+}
+.no-history {
+  color: #888;
+  text-align: center;
+  padding: 1.5rem 0;
+}
+  // In App.jsx, inside the css constant
+
+/* Status text styling */
+.status-text {
+  font-weight: 700;
+  text-transform: capitalize;
+}
+.status-text.status-success { color: var(--accent); }
+.status-text.status-pending { color: #f39c12; }
+.status-text.status-failed { color: #e74c3c; }
+
+.history-item.status-pending { border-left: 4px solid #f39c12; }
+.history-item.status-success { border-left: 4px solid var(--accent); }
+.history-item.status-failed { border-left: 4px solid #e74c3c; }
 `;
